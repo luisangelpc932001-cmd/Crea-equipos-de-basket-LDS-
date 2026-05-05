@@ -20,19 +20,26 @@ def normalizar(texto):
     return "".join(c for c in texto if unicodedata.category(c) != "Mn")
 
 # =========================
-# CARGAR JUGADORES (CSV ROBUSTO)
+# CARGAR JUGADORES (ROBUSTO)
 # =========================
 @st.cache_data
 def cargar_jugadores():
     df = pd.read_csv(
         ARCHIVO,
-        sep=";",                 # CSV de Excel en español
-        encoding="latin-1",      # Acentos, ñ
-        on_bad_lines="skip",     # Ignora filas mal formadas
-        engine="python"          # Parser más tolerante
+        sep=None,              # autodetecta ; , o tab
+        engine="python",       # parser tolerante
+        encoding="latin-1",    # acentos y ñ
+        on_bad_lines="skip"    # ignora filas corruptas
     )
 
-    df.columns = ["Jugador"] + ATRIBUTOS
+    columnas_esperadas = ["Jugador"] + ATRIBUTOS
+    if list(df.columns) != columnas_esperadas:
+        raise ValueError(
+            f"Columnas incorrectas en el CSV.\n"
+            f"Esperadas: {columnas_esperadas}\n"
+            f"Encontradas: {list(df.columns)}"
+        )
+
     df["Jugador_norm"] = df["Jugador"].apply(normalizar)
     return df
 
@@ -40,16 +47,10 @@ def cargar_jugadores():
 # GUARDAR NUEVO JUGADOR
 # =========================
 def guardar_jugador(jugador):
-    df = pd.read_csv(
-        ARCHIVO,
-        sep=";",
-        encoding="latin-1",
-        on_bad_lines="skip",
-        engine="python"
-    )
-    df.columns = ["Jugador"] + ATRIBUTOS
+    df = cargar_jugadores()
     df = pd.concat([df, pd.DataFrame([jugador])], ignore_index=True)
 
+    # guardamos con ; para Excel en español
     df.to_csv(
         ARCHIVO,
         sep=";",
@@ -81,7 +82,7 @@ def crear_equipos(df, jugadores_presentes):
             if jugador[a] == 5 and 5 in valores:
                 return False
 
-        # reglas específicas de altura
+        # reglas especiales de altura
         alturas = [j["Altura"] for j in equipo]
         if jugador["Altura"] == 5 and alturas.count(5) >= 1:
             return False
@@ -102,11 +103,11 @@ def crear_equipos(df, jugadores_presentes):
             if not puede_agregar(jugador, equipos[i], stats[i]):
                 continue
 
-            temp = [s.copy() for s in stats]
+            tmp = [s.copy() for s in stats]
             for a in ATRIBUTOS:
-                temp[i][a] += jugador[a]
+                tmp[i][a] += jugador[a]
 
-            score = balance(temp)
+            score = balance(tmp)
             if score < mejor_score:
                 mejor_score = score
                 mejor = i
@@ -134,7 +135,6 @@ jugadores_seleccionados = st.multiselect(
 )
 
 if st.button("🔥 Crear equipos"):
-
     if len(jugadores_seleccionados) < 5:
         st.warning("Necesitas al menos 5 jugadores")
     else:
@@ -151,7 +151,6 @@ if st.button("🔥 Crear equipos"):
                     f"(A:{j['Altura']} V:{j['Velocidad']} "
                     f"H:{j['Habilidad']} TI:{j['Tiro Interior']} TE:{j['Tiro Exterior']})"
                 )
-
                 for a in ATRIBUTOS:
                     totales[a] += j[a]
 
@@ -174,10 +173,7 @@ st.subheader("➕ Añadir jugador nuevo")
 
 with st.form("nuevo_jugador"):
     nombre = st.text_input("Nombre")
-
-    valores = {}
-    for a in ATRIBUTOS:
-        valores[a] = st.slider(a, 1, 5, 3)
+    valores = {a: st.slider(a, 1, 5, 3) for a in ATRIBUTOS}
 
     if st.form_submit_button("Guardar jugador"):
         nuevo = {"Jugador": nombre}
