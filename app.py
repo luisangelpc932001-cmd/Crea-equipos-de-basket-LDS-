@@ -15,30 +15,38 @@ LIMITE = 20
 # NORMALIZAR TEXTO
 # =========================
 def normalizar(texto):
-    texto = str(texto).lower()
+    texto = str(texto).strip().lower()
     texto = unicodedata.normalize("NFD", texto)
     return "".join(c for c in texto if unicodedata.category(c) != "Mn")
 
 # =========================
-# CARGAR JUGADORES (ROBUSTO)
+# CARGAR JUGADORES (ULTRA ROBUSTO)
 # =========================
 @st.cache_data
 def cargar_jugadores():
     df = pd.read_csv(
         ARCHIVO,
         sep=None,              # autodetecta ; , o tab
-        engine="python",       # parser tolerante
-        encoding="latin-1",    # acentos y ñ
-        on_bad_lines="skip"    # ignora filas corruptas
+        engine="python",
+        encoding="latin-1",
+        on_bad_lines="skip"
     )
 
-    columnas_esperadas = ["Jugador"] + ATRIBUTOS
-    if list(df.columns) != columnas_esperadas:
-        raise ValueError(
-            f"Columnas incorrectas en el CSV.\n"
-            f"Esperadas: {columnas_esperadas}\n"
-            f"Encontradas: {list(df.columns)}"
+    # 🔥 limpiar encabezados
+    columnas_limpias = [normalizar(c).replace("_", " ") for c in df.columns]
+    df.columns = columnas_limpias
+
+    # columnas esperadas normalizadas
+    esperadas = ["jugador"] + [normalizar(c) for c in ATRIBUTOS]
+
+    if len(df.columns) != 6:
+        st.error(
+            f"❌ El CSV debe tener 6 columnas. Se encontraron {len(df.columns)}."
         )
+        st.stop()
+
+    # reasignar nombres correctos
+    df.columns = ["Jugador"] + ATRIBUTOS
 
     df["Jugador_norm"] = df["Jugador"].apply(normalizar)
     return df
@@ -50,7 +58,6 @@ def guardar_jugador(jugador):
     df = cargar_jugadores()
     df = pd.concat([df, pd.DataFrame([jugador])], ignore_index=True)
 
-    # guardamos con ; para Excel en español
     df.to_csv(
         ARCHIVO,
         sep=";",
@@ -78,11 +85,9 @@ def crear_equipos(df, jugadores_presentes):
             if stats_equipo[a] + jugador[a] > LIMITE:
                 return False
 
-            valores = [j[a] for j in equipo]
-            if jugador[a] == 5 and 5 in valores:
+            if jugador[a] == 5 and any(j[a] == 5 for j in equipo):
                 return False
 
-        # reglas especiales de altura
         alturas = [j["Altura"] for j in equipo]
         if jugador["Altura"] == 5 and alturas.count(5) >= 1:
             return False
